@@ -16,31 +16,20 @@ DATASET_CATALOG = {
         "name": "Oxford-IIIT Pet Dataset",
         "url": "https://www.robots.ox.ac.uk/~vgg/data/pets/",
         "description": "37 个猫狗品种，官方标注质量高，适合品种分类。",
-    },
-    "stanford_dogs": {
-        "name": "Stanford Dogs Dataset",
-        "url": "http://vision.stanford.edu/aditya86/ImageNetDogs/",
-        "description": "120 个犬种细粒度分类，适合狗品种识别强化。",
-    },
-    "cat_breeds_dataset": {
-        "name": "Cat Breeds Dataset (Kaggle 社区常见版本)",
-        "url": "https://www.kaggle.com/datasets",
-        "description": "可补充猫品种样本，但需注意标签清洗与授权协议。",
-    },
+    }
 }
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="训练猫狗品种分类模型（自定义网络）")
-    parser.add_argument("--data-dir", type=Path, default=Path("data/breeds"))
-    parser.add_argument("--dataset-preset", type=str, default="oxford_iiit_pet", choices=list(DATASET_CATALOG.keys()))
-    parser.add_argument("--arch", type=str, default="resbreednet", choices=["breednet", "resbreednet"])
+    parser = argparse.ArgumentParser(description="训练猫狗品种分类模型（仅 ResNet + Oxford-IIIT Pet）")
+    parser.add_argument("--data-dir", type=Path, default=Path("data/oxford_iiit_pet"))
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--val-split", type=float, default=0.2)
     parser.add_argument("--save-path", type=Path, default=Path("artifacts/breednet.pth"))
+    parser.add_argument("--no-download", action="store_true", help="不自动下载 Oxford-IIIT Pet")
     return parser.parse_args()
 
 
@@ -61,13 +50,25 @@ def evaluate(model: nn.Module, loader: DataLoader, criterion: nn.Module, device:
     return total_loss / max(total, 1), correct / max(total, 1)
 
 
+def _class_name_from_path(image_path: str) -> str:
+    image_name = Path(image_path).stem
+    return "_".join(image_name.split("_")[:-1]).lower()
+
+
+def build_class_names(dataset: datasets.OxfordIIITPet) -> list[str]:
+    id_to_name: dict[int, str] = {}
+    for image_path, label in zip(dataset._images, dataset._labels):
+        class_index = int(label) - 1
+        if class_index not in id_to_name:
+            id_to_name[class_index] = _class_name_from_path(image_path)
+    return [id_to_name[idx] for idx in sorted(id_to_name.keys())]
+
+
 def main() -> None:
     args = parse_args()
-    if not args.data_dir.exists():
-        raise FileNotFoundError(f"数据目录不存在: {args.data_dir}")
 
-    dataset_info = DATASET_CATALOG[args.dataset_preset]
-    print(f"数据集建议：{dataset_info['name']} | {dataset_info['url']}")
+    dataset_info = DATASET_CATALOG["oxford_iiit_pet"]
+    print(f"使用数据集：{dataset_info['name']} | {dataset_info['url']}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     transform = transforms.Compose(
@@ -78,8 +79,16 @@ def main() -> None:
         ]
     )
 
-    dataset = datasets.ImageFolder(root=str(args.data_dir), transform=transform)
-    if len(dataset.classes) < 2:
+    dataset = datasets.OxfordIIITPet(
+        root=str(args.data_dir),
+        split="trainval",
+        target_types="category",
+        transform=transform,
+        download=not args.no_download,
+    )
+    class_names = build_class_names(dataset)
+
+    if len(class_names) < 2:
         raise ValueError("至少需要两个品种类别进行训练")
 
     val_size = int(len(dataset) * args.val_split)
@@ -89,7 +98,7 @@ def main() -> None:
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=2)
     val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
-    model = build_model(args.arch, num_classes=len(dataset.classes)).to(device)
+    model = build_model(num_classes=len(class_names)).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -120,11 +129,11 @@ def main() -> None:
             best_acc = val_acc
             torch.save(
                 {
-                    "arch": args.arch,
+                    "arch": "resbreednet",
                     "model_state_dict": model.state_dict(),
-                    "classes": dataset.classes,
+                    "classes": class_names,
                     "image_size": args.image_size,
-                    "dataset_preset": args.dataset_preset,
+                    "dataset_preset": "oxford_iiit_pet",
                 },
                 args.save_path,
             )
@@ -133,10 +142,10 @@ def main() -> None:
     meta_path.write_text(
         json.dumps(
             {
-                "arch": args.arch,
-                "dataset_preset": args.dataset_preset,
+                "arch": "resbreednet",
+                "dataset_preset": "oxford_iiit_pet",
                 "dataset_info": dataset_info,
-                "classes": dataset.classes,
+                "classes": class_names,
                 "best_val_acc": best_acc,
                 "epochs": args.epochs,
             },
