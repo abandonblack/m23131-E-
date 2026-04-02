@@ -29,44 +29,8 @@ class ResidualBlock(nn.Module):
         return out
 
 
-class BreedNet(nn.Module):
-    """基础 CNN 版本，训练更快。"""
-
-    def __init__(self, num_classes: int) -> None:
-        super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((1, 1)),
-        )
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(256, 128),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
-            nn.Linear(128, num_classes),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.features(x)
-        return self.classifier(x)
-
-
 class ResBreedNet(nn.Module):
-    """更强的残差结构，适合追求更高精度。"""
+    """残差结构模型（ResNet 思路实现）。"""
 
     def __init__(self, num_classes: int) -> None:
         super().__init__()
@@ -95,10 +59,5 @@ class ResBreedNet(nn.Module):
         return self.fc(x)
 
 
-def build_model(arch: str, num_classes: int) -> nn.Module:
-    arch = arch.lower()
-    if arch == "breednet":
-        return BreedNet(num_classes=num_classes)
-    if arch == "resbreednet":
-        return ResBreedNet(num_classes=num_classes)
-    raise ValueError(f"不支持的网络结构: {arch}")
+def build_model(num_classes: int) -> nn.Module:
+    return ResBreedNet(num_classes=num_classes)
