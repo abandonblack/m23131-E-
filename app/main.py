@@ -36,7 +36,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL: torch.nn.Module | None = None
 CLASS_NAMES: list[str] = []
 IMAGE_SIZE = 224
-ARCH = "resbreednet"
+ARCH = "resnet18"
 
 
 def load_model() -> None:
@@ -48,9 +48,9 @@ def load_model() -> None:
     checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
     CLASS_NAMES = checkpoint["classes"]
     IMAGE_SIZE = checkpoint.get("image_size", 224)
-    ARCH = checkpoint.get("arch", "resbreednet")
+    ARCH = "resnet18"
 
-    model = build_model(ARCH, num_classes=len(CLASS_NAMES)).to(DEVICE)
+    model = build_model(num_classes=len(CLASS_NAMES)).to(DEVICE)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     MODEL = model
@@ -61,7 +61,7 @@ def infer_image(image_path: Path) -> dict[str, Any]:
         return {
             "error": (
                 "模型权重不存在，请先运行训练脚本："
-                "python -m app.train --data-dir data/breeds --arch resbreednet"
+                "python -m app.train --data-dir data/oxford_iiit_pet"
             )
         }
 
