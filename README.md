@@ -1,4 +1,4 @@
-# 猫狗品种精准识别平台（Oxford-IIIT + ResNet18 版）
+# 猫狗品种精准识别平台（Oxford-IIIT + ResNet34-SE 版）
 
 一个基于 **PyTorch + FastAPI** 的 Web 应用，支持：
 
@@ -10,7 +10,7 @@
 
 项目保留 ResNet 路线，并针对你反馈的低准确率做了强化：
 
-- 在 `model.py` 中显式实现 ResNet18 各层（不再直接调用模型接口）
+- 在 `model.py` 中显式实现 ResNet34-SE 各层（不再直接调用模型接口）
 - 数据增强：`RandomResizedCrop` / 翻转 / 颜色扰动 / `RandomErasing`
 - 优化器升级为 `AdamW` + `CosineAnnealingLR`
 - 损失函数支持 `label_smoothing`
@@ -25,13 +25,13 @@ pip install -r requirements.txt
 ## 2. 训练模型（默认自动下载 Oxford-IIIT）
 
 ```bash
-python -m app.train --data-dir data/oxford_iiit_pet --epochs 30
+python -m app.train --data-dir data/oxford_iiit_pet --epochs 40
 ```
 
 常用参数：
 
 - `--no-download`：不自动下载
-- `--batch-size 32 --lr 3e-4 --weight-decay 1e-4`
+- `--batch-size 24 --lr 5e-4 --weight-decay 5e-4 --image-size 256`
 
 训练后输出：
 

@@ -4,7 +4,24 @@ import torch
 from torch import nn
 
 
-class BasicBlock(nn.Module):
+class SqueezeExcitation(nn.Module):
+    def __init__(self, channels: int, reduction: int = 16) -> None:
+        super().__init__()
+        reduced = max(channels // reduction, 8)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Conv2d(channels, reduced, kernel_size=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(reduced, channels, kernel_size=1, bias=True),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        scale = self.fc(self.pool(x))
+        return x * scale
+
+
+class BasicBlockSE(nn.Module):
     expansion = 1
 
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1) -> None:
@@ -21,6 +38,7 @@ class BasicBlock(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
+        self.se = SqueezeExcitation(out_channels)
 
         if stride != 1 or in_channels != out_channels:
             self.downsample = nn.Sequential(
@@ -39,13 +57,14 @@ class BasicBlock(nn.Module):
 
         out = self.conv2(out)
         out = self.bn2(out)
+        out = self.se(out)
 
         out = out + identity
         out = self.relu(out)
         return out
 
 
-class ResNet18(nn.Module):
+class ResNet34SE(nn.Module):
     def __init__(self, num_classes: int) -> None:
         super().__init__()
         self.stem = nn.Sequential(
@@ -55,19 +74,21 @@ class ResNet18(nn.Module):
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
 
-        self.layer1 = self._make_layer(64, 64, blocks=2, stride=1)
-        self.layer2 = self._make_layer(64, 128, blocks=2, stride=2)
-        self.layer3 = self._make_layer(128, 256, blocks=2, stride=2)
-        self.layer4 = self._make_layer(256, 512, blocks=2, stride=2)
+        self.layer1 = self._make_layer(64, 64, blocks=3, stride=1)
+        self.layer2 = self._make_layer(64, 128, blocks=4, stride=2)
+        self.layer3 = self._make_layer(128, 256, blocks=6, stride=2)
+        self.layer4 = self._make_layer(256, 512, blocks=3, stride=2)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(p=0.3)
-        self.fc = nn.Linear(512, num_classes)
+        self.classifier = nn.Sequential(
+            nn.Dropout(p=0.4),
+            nn.Linear(512, num_classes),
+        )
 
     def _make_layer(self, in_channels: int, out_channels: int, blocks: int, stride: int) -> nn.Sequential:
-        layers: list[nn.Module] = [BasicBlock(in_channels, out_channels, stride=stride)]
+        layers: list[nn.Module] = [BasicBlockSE(in_channels, out_channels, stride=stride)]
         for _ in range(1, blocks):
-            layers.append(BasicBlock(out_channels, out_channels, stride=1))
+            layers.append(BasicBlockSE(out_channels, out_channels, stride=1))
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -78,11 +99,9 @@ class ResNet18(nn.Module):
         x = self.layer4(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.dropout(x)
-        x = self.fc(x)
-        return x
+        return self.classifier(x)
 
 
 def build_model(num_classes: int) -> nn.Module:
-    """构建显式实现的 ResNet18 分类器。"""
-    return ResNet18(num_classes=num_classes)
+    """构建显式实现的 ResNet34-SE 分类器。"""
+    return ResNet34SE(num_classes=num_classes)

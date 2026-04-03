@@ -23,13 +23,13 @@ DATASET_CATALOG = {
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="训练猫狗品种分类模型（ResNet18 + Oxford-IIIT Pet）")
+    parser = argparse.ArgumentParser(description="训练猫狗品种分类模型（ResNet34-SE + Oxford-IIIT Pet）")
     parser.add_argument("--data-dir", type=Path, default=Path("data/oxford_iiit_pet"))
-    parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--image-size", type=int, default=224)
+    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--batch-size", type=int, default=24)
+    parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument("--weight-decay", type=float, default=5e-4)
+    parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--val-split", type=float, default=0.2)
     parser.add_argument("--save-path", type=Path, default=Path("artifacts/breednet.pth"))
     parser.add_argument("--num-workers", type=int, default=4)
@@ -188,6 +188,10 @@ def main() -> None:
     best_acc = 0.0
     args.save_path.parent.mkdir(parents=True, exist_ok=True)
 
+    use_amp = torch.cuda.is_available()
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+
+
     for epoch in range(1, args.epochs + 1):
         model.train()
         running_loss = 0.0
@@ -195,11 +199,15 @@ def main() -> None:
         for images, labels in train_loader:
             labels = labels - 1
             images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            scaler.step(optimizer)
+            scaler.update()
             running_loss += loss.item() * images.size(0)
 
         train_loss = running_loss / max(len(train_set), 1)
@@ -219,7 +227,7 @@ def main() -> None:
             best_acc = val_acc
             torch.save(
                 {
-                    "arch": "resnet18",
+                    "arch": "resnet34_se",
                     "model_state_dict": model.state_dict(),
                     "classes": class_names,
                     "image_size": args.image_size,
@@ -232,7 +240,7 @@ def main() -> None:
     meta_path.write_text(
         json.dumps(
             {
-                "arch": "resnet18",
+                "arch": "resnet34_se",
                 "dataset_preset": "oxford_iiit_pet",
                 "dataset_info": dataset_info,
                 "classes": class_names,

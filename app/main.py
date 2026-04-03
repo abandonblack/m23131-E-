@@ -36,7 +36,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL: torch.nn.Module | None = None
 CLASS_NAMES: list[str] = []
 IMAGE_SIZE = 224
-ARCH = "resnet18"
+ARCH = "resnet34_se"
 
 
 def load_model() -> None:
@@ -48,7 +48,7 @@ def load_model() -> None:
     checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
     CLASS_NAMES = checkpoint["classes"]
     IMAGE_SIZE = checkpoint.get("image_size", 224)
-    ARCH = "resnet18"
+    ARCH = "resnet34_se"
 
     model = build_model(num_classes=len(CLASS_NAMES)).to(DEVICE)
     model.load_state_dict(checkpoint["model_state_dict"])
